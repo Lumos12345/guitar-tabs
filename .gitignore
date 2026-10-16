@@ -1,0 +1,33 @@
+# Secrets & credentials — never commit these
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials.json
+secrets.json
+token.json
+*_token.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Local audio / large media
+*.mp3
+*.wav
+*.m4a
+*.flac
