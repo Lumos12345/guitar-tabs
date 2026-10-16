@@ -45,6 +45,18 @@ python3 scripts/chord_analyze.py /path/to/song.mp3
 # prints global chroma, top key candidates, and a per-2s chord track
 ```
 
+## Examples
+
+See [`examples/`](examples/) for two complete worked cases:
+
+- **`01-frusciante-btb/`** — instrumental: retrieve a real tab and render a
+  print-ready LilyPond tab + a Pillow beginner teaching sheet.
+- **`02-nuan-btb/`** — Chinese pop vocal: audio → key/chord analysis → transpose
+  to C major → capo calculation → a 2-page 弹唱谱 (lyric + chord chart).
+
+They share a song title on purpose — a live demo of the skill's
+"never infer the song from its title alone" rule.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
