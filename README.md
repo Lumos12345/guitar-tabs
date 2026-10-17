@@ -47,12 +47,15 @@ python3 scripts/chord_analyze.py /path/to/song.mp3
 
 ## Examples
 
-See [`examples/`](examples/) for two complete worked cases:
+See [`examples/`](examples/) for three complete worked cases:
 
 - **`01-frusciante-btb/`** — instrumental: retrieve a real tab and render a
   print-ready LilyPond tab + a Pillow beginner teaching sheet.
 - **`02-nuan-btb/`** — Chinese pop vocal: audio → key/chord analysis → transpose
   to C major → capo calculation → a 2-page 弹唱谱 (lyric + chord chart).
+- **`03-nikki-btb/`** — English pop vocal: lyrics+timestamps recovered by OCR from
+  burned-in video subtitles → F#→C transpose → a 4-layer 弹唱谱
+  (chords + TAB + 简谱 + lyrics).
 
 They share a song title on purpose — a live demo of the skill's
 "never infer the song from its title alone" rule.

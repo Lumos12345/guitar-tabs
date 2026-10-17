@@ -184,6 +184,102 @@ transposition (`原调 X → 本谱 C 调指法 + 变调夹 K 品`) and the stru
 
 Chords with no open voicing (F) get an **Fmaj7** substitute; state it on the page.
 
+### 4-layer 弹唱谱 (chords + TAB + 简谱 + lyrics)
+
+A higher tier than the 2-page chart above: each lyric line becomes ONE "system" with four
+stacked, vertically-aligned layers:
+
+```
+① chord name (red)      ← left hand, placed above the syllable where the change happens
+② TAB staff (6 lines)   ← right hand: X marks for pluck/strum positions
+③ 简谱 1-7 (blue)       ← vocal melody
+④ lyrics (black)
+```
+
+Plus a timestamp at the right of each system so the learner can match the recording.
+
+Rules that make it readable:
+- **Chords are placed per-syllable, not one per line.** Compute each character's x
+  position, then draw the chord name at the x of the syllable where it changes.
+- **Cap chord changes at 2 per lyric line.** Raw quarter-by-quarter chroma detection
+  returns 3-4 changes per line; a beginner cannot change chords that fast. Snap the
+  detected chords to the diatonic set of the chosen key, then keep the first chord plus
+  at most one mid-line change.
+- **Label the 简谱 layer as approximate** unless you transcribed it by ear. See below.
+
+Pagination: measure the system height as a constant, then **check
+`y + SYSTEM_H > bottom` BEFORE drawing**, and when it overflows, save the page and
+re-draw that same system once on the new page. The naive "draw then save when full"
+loop writes the overflowing system onto both pages and clips its last row.
+
+Working code: `examples/03-nikki-btb/render_4layer_sheet.py`.
+
+### Recovering lyrics + timestamps from burned-in video subtitles
+
+When the user hands you a video (`.m4s` from Bilibili, `.mp4`, screen capture) and the
+lyrics are **burned into the picture** as subtitle text, there is no soft subtitle stream
+to extract — `ffprobe -select_streams s` returns nothing. OCR the pixels instead.
+
+**First check what you actually have.** A Bilibili `.m4s` is often **video-only** (DASH
+splits audio and video into separate files). `ffprobe` it: `nb_streams: 1` with
+`codec_type: video` means no audio at all — go find the sibling `.m4a` whose duration
+matches the video exactly.
+
+1. Sample frames: `ffmpeg -i video.m4s -vf fps=2 /tmp/frames/f_%04d.png` (2 fps is
+   plenty; subtitles persist for seconds).
+2. Find the text region. Ask a vision model for the pixel coordinates of the subtitle
+   line rather than guessing — subtitles are usually near the bottom but the exact y
+   varies (a wrong crop silently OCRs background art and returns gibberish).
+3. Crop + upscale + grayscale, then OCR each frame:
+   `ffmpeg -i f.png -vf "crop=1500:95:90:910,scale=3000:-1,format=gray" band.png`
+   `tesseract band.png stdout --psm 6`
+4. Dedupe consecutive identical results → `[mm:ss] line`.
+
+**Installing tesseract without root** (environments where `sudo` needs a password you
+must not guess):
+
+```bash
+apt-get download tesseract-ocr tesseract-ocr-eng libtesseract5 \
+                 libleptonica-dev liblept5 libarchive13t64 libgif7 \
+                 libjpeg-turbo8 libopenjp2-7 libwebp7 libtiff6 libpng16-16
+for f in *.deb; do dpkg-deb -x "$f" /tmp/tess; done
+export LD_LIBRARY_PATH=/tmp/tess/usr/lib/x86_64-linux-gnu
+export TESSDATA_PREFIX=/tmp/tess/usr/share/tesseract-ocr/5/tessdata
+/tmp/tess/usr/bin/tesseract img.png stdout --psm 6
+```
+
+Pitfall: `liblept.so.5` is a **symlink chain** ending at the real `liblept.so.5.0.4`,
+which only ships in the `liblept5` runtime package. Extracting just
+`libleptonica-dev` leaves a dangling link and tesseract dies with
+`error while loading shared libraries: liblept.so.5`. Fetch `liblept5` too, and re-run
+after each `error while loading shared libraries` to catch the next missing lib.
+
+**OCR on stylized text is lossy** — white text over bright artwork garbles. Use tesseract
+for the bulk and hand the low-confidence frames to a vision model, which reads them
+reliably. Cross-check timings with whisper, but trust the on-screen text over whisper for
+*wording*: whisper misheard "petals" as "pedophiles" and "the stars just began" as
+"the star is just begun" on a real track.
+
+### 简谱 (numbered melody) extraction — the unreliable tier
+
+Getting layer ③ needs vocal pitch tracking. Recipe: `examples/03-nikki-btb/extract_melody_jianpu.py`
+(pure numpy).
+
+1. Autocorrelation f0 per frame (2048-sample window, hop 512, search 110–700 Hz),
+   with parabolic peak refinement.
+2. **Octave-continuity correction is mandatory.** A raw tracker jumps octaves wildly
+   (`1 7, 1 4, 5,` for a smooth phrase). Pull each frame within ~1.55× of the line's
+   median pitch before quantising.
+3. Median-smooth, then snap to the nearest diatonic degree;
+   `{0:'1',2:'2',4:'3',5:'4',7:'5',9:'6',11:'7'}` in C major.
+
+**Ship it labelled.** Vocal-in-mix f0 gives melody *contour*, not note-accurate 简谱.
+Print "仅供参考" / "approximate" on the page, or offer a blank 简谱 grid for the learner
+to fill by ear. Never present it as authoritative.
+
+Spectral subtraction (mix − instrumental) improves this a lot, but needs both versions
+time-aligned; a lone vocal mix is not enough.
+
 ## Beginner key transposition (make hard keys playable)
 
 Published keys are often full of barre chords (F#, A#m, D#m…) that a beginner cannot play.
@@ -304,6 +400,16 @@ service.
   the user before building anything. A same-named famous song is a trap.
 - When the user gives local file paths, open THOSE files — don't fetch an equivalent-looking
   song from the web.
+- **A `.m4s` is usually video-only.** DASH downloads split audio/video; `ffprobe` showing
+  `nb_streams: 1` and only a video stream means you must locate the sibling `.m4a` whose
+  duration matches the video exactly before any audio analysis.
+- **Never crop a subtitle region by guess.** A wrong y offset silently OCRs background art
+  and yields alphabet soup that looks like a transcription failure rather than a crop bug.
+  Confirm the coordinates with a vision model first.
+- **`git clone`/`git push` to github.com fails behind the GFW** (`curl 28 … port 443 …
+  Couldn't connect`) while `api.github.com` over HTTPS still works. Don't retry the clone:
+  stage the files locally and let the user push from their own terminal (or use the
+  Contents API with a user-supplied token — never ask for a token in chat).
 
 ## References
 - `references/ultimate-guitar-extraction.md` — full worked example (search → fetch →
@@ -318,3 +424,10 @@ service.
   LRC-synced per-line chord chart, and the beginner key-transposition / capo recipe.
 - `scripts/chord_analyze.py` — runnable detector: `python3 chord_analyze.py <audio>`
   prints global chroma, top key candidates, and a per-2s chord track.
+- `examples/03-nikki-btb/` — 4-layer sheet worked example: lyrics recovered by OCR from
+  burned-in video subtitles, F#→C transposition with capo, vocal f0 → 简谱, and the
+  measure-then-flow pagination fix.
+- `examples/03-nikki-btb/render_4layer_sheet.py` — Pillow renderer for the 4-layer sheet
+  (chord grids, fingerpicking/strumming drawings, per-syllable chord placement).
+- `examples/03-nikki-btb/extract_melody_jianpu.py` — autocorrelation f0 → jianpu with
+  octave-continuity correction; `python3 extract_melody_jianpu.py song.m4a lyrics.lrc`.
