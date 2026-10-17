@@ -184,6 +184,56 @@ transposition (`原调 X → 本谱 C 调指法 + 变调夹 K 品`) and the stru
 
 Chords with no open voicing (F) get an **Fmaj7** substitute; state it on the page.
 
+### ESCALATION: the professional multi-layer 弹唱谱 (learned from rejection)
+The 2-page chart above is the **minimum bar**, and it is routinely rejected as "too
+crude" — the usual complaints:
+> "the chord guidance and the lyric alignment are not detailed enough, and there is no
+> right-hand fingering"
+
+When the user shows reference JPGs of a printed pop songbook / 吉他教材 (stacked
+layers: chord diagrams + TAB + 简谱 + lyrics, with X-marks and strum arrows in the TAB),
+or calls a simpler chart crude, they want the **professional version**:
+1. **Right-hand fingering is mandatory** — draw BOTH a fingerpicking (分解和弦 53231323)
+   pattern AND a strumming (扫弦 ↓↓↑ ↑↓↑) pattern. A chord sheet with no right-hand
+   reference reads as incomplete.
+2. **Per-syllable chord alignment** — each chord sits ABOVE the exact syllable where it
+   changes (compute each hanzi's x, place the chord there), NEVER one chord per line.
+3. **Fingering detail** — chord grids + plain-language finger notes; a playing-guide box
+   saying which pattern in which section (verse=fingerpick, chorus=strum).
+A **three-layer** version (chord diagrams + TAB + lyrics) and a **four-layer** version
+(+ 简谱 melody) both exist — confirm which; the 简谱 layer needs vocal-pitch extraction and
+is materially more work. Full recipe (pattern-drawing code, per-syllable placement, chord
+table, the execute_code-vs-terminal PIL runner pitfall): `references/professional-chord-sheet.md`.
+
+### Melody (简谱) layer — the hard, unreliable tier
+The 4th layer of a professional chart is 简谱 (numbered notation: 1–7 scale degrees with
+octave dots above/below and underline/extension marks for duration). Getting it needs
+**vocal pitch extraction**, which is the genuinely hard step.
+
+**A working pure-numpy pipeline exists** — `scripts/melody_jianpu.py <audio> <lyrics.lrc>`.
+It tracks autocorrelation f0 over the vocal band, then applies **octave-continuity
+correction** (the make-or-break step: raw f0 octave-errors constantly on voice; without it
+the output jumps randomly between octaves and is worthless). Full recipe, parameters, and
+the octave-fix code: `references/jianpu-layer-and-pagination.md` §1.
+
+Its ceiling is **melodic contour, not note-accurate jianpu** — values still move
+non-stepwise. So ship it with one of two honest labels:
+- the row **labelled approximate** (`简谱(旋律仅供参考)` / "approximate, AI-extracted"), stated
+  in the chat reply too; or
+- a **blank 简谱 grid** (8th-note cells printed) for the learner to fill by ear.
+
+Never present it unlabelled as authoritative — labelling is what keeps this on the right
+side of CRITICAL #2 ("never fabricate"). Dropping to a solid 3-layer chart is also fine.
+
+Reality check before promising the layer:
+- The song is often a **minor original** whose 简谱 does not exist online. Searching the
+  lyric/artist returns noise; don't burn many queries. Establish "no web 简谱" fast, pivot.
+- **Spectral subtraction** (`max(|V| − k·|A|, 0)`, k≈1.4) needs a time-aligned instrumental
+  of **identical duration**. Two files of different length are different edits
+  — subtraction is invalid. ffprobe both first.
+- jianpu conversion: snap each detected pitch to the nearest **C-major scale tone**, degree =
+  {0:'1',2:'2',4:'3',5:'4',7:'5',9:'6',11:'7'}, octave from `midi//12 - 1`.
+
 ### 4-layer 弹唱谱 (chords + TAB + 简谱 + lyrics)
 
 A higher tier than the 2-page chart above: each lyric line becomes ONE "system" with four
@@ -260,10 +310,10 @@ reliably. Cross-check timings with whisper, but trust the on-screen text over wh
 *wording*: whisper misheard "petals" as "pedophiles" and "the stars just began" as
 "the star is just begun" on a real track.
 
-### 简谱 (numbered melody) extraction — the unreliable tier
+### 简谱 extraction — implementation notes (pure numpy)
 
-Getting layer ③ needs vocal pitch tracking. Recipe: `examples/03-nikki-btb/extract_melody_jianpu.py`
-(pure numpy).
+Getting layer ③ needs vocal pitch tracking. Working script:
+`examples/03-nikki-btb/extract_melody_jianpu.py`.
 
 1. Autocorrelation f0 per frame (2048-sample window, hop 512, search 110–700 Hz),
    with parabolic peak refinement.
@@ -279,6 +329,19 @@ to fill by ear. Never present it as authoritative.
 
 Spectral subtraction (mix − instrumental) improves this a lot, but needs both versions
 time-aligned; a lone vocal mix is not enough.
+
+### Chords: snap detections to the diatonic set, don't trust per-quarter chroma
+Per-quarter chroma matching on a full mix emits junk (`Cm`, `Gm`, `Ab`, `Eb` on a song
+squarely in F# major) and is NOT directly printable. Pipeline that works:
+1. Fix the **key** from global chroma (a clear winner, e.g. F# major 0.756).
+2. **Map every detected chord into the transposed key's diatonic set** via an explicit dict,
+   defaulting unknowns to the tonic — never emit a chord outside the beginner set.
+3. Collapse consecutive duplicates, then **cap at 2 chord changes per lyric line**
+   (first + midpoint). One per line reads as too crude; four is unreadable for a beginner.
+
+Worked example (this session): **F# major → C major, capo 6**.
+F#→C, G#m→Dm, A#m→Em, B→Fmaj7, C#→G, D#m→Am ⇒ beginner set **C · Dm · Em · Fmaj7 · G · Am**,
+all open, F as Fmaj7. Map dict + details: `references/jianpu-layer-and-pagination.md` §2.
 
 ## Beginner key transposition (make hard keys playable)
 
@@ -422,8 +485,20 @@ service.
 - `references/audio-chord-analysis.md` — pure-numpy chroma/key/chord detector for songs
   with no published tab: ffmpeg command, triad-template matching, key estimation,
   LRC-synced per-line chord chart, and the beginner key-transposition / capo recipe.
+- `references/chord-chart-layout.md` — concrete 2-page 弹唱谱 (chord + lyric chart)
+  layout: page-1 blocks, page-2 row spec, verse/chorus loop cheat, worked example.
+- `references/professional-chord-sheet.md` — the escalated multi-layer 弹唱谱:
+  right-hand fingerpicking + strumming pattern drawings, per-syllable chord placement,
+  chord table, and the execute_code-vs-terminal Pillow runner pitfall.
+- `references/jianpu-layer-and-pagination.md` — 简谱 melody extraction recipe
+  (autocorrelation f0 + the octave-continuity fix) and the measure-then-flow pagination
+  fix that stops a system being drawn on two pages.
+- `references/four-layer-sheet-assembly.md` — assembling a complete 4-layer sheet
+  end-to-end: layer geometry constants, system height budgeting, page-break rules.
 - `scripts/chord_analyze.py` — runnable detector: `python3 chord_analyze.py <audio>`
   prints global chroma, top key candidates, and a per-2s chord track.
+- `scripts/melody_jianpu.py` — vocal f0 → 简谱: `python3 melody_jianpu.py <audio> <lyrics.lrc>`
+  (contour only; label the output approximate).
 - `examples/03-nikki-btb/` — 4-layer sheet worked example: lyrics recovered by OCR from
   burned-in video subtitles, F#→C transposition with capo, vocal f0 → 简谱, and the
   measure-then-flow pagination fix.
